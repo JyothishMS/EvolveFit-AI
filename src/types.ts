@@ -18,6 +18,7 @@ export interface DayWorkout {
   name: string;
   muscleGroups: string[];
   isRestDay: boolean;
+  activityType?: 'strength' | 'cardio' | 'both';
 }
 
 export interface WeeklyPlan {

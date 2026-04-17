@@ -22,7 +22,9 @@ import {
   Loader2,
   Shield,
   Star,
-  Zap
+  Zap,
+  Moon,
+  Sun
 } from 'lucide-react';
 import { UserProfile, WorkoutSession, WorkoutExercise, Exercise } from './types';
 import { Onboarding } from './components/Onboarding';
@@ -32,8 +34,11 @@ import { MuscleRankings } from './components/MuscleRankings';
 import { Legal } from './components/Legal';
 import { MissionComplete } from './components/MissionComplete';
 import { ProgressGraph } from './components/ProgressGraph';
+import { ToastProvider, useToast } from './components/Toast';
+import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import { cn, formatXP, getLevelInfo } from './lib/utils';
 import { EXERCISES } from './constants';
+import { getExerciseVariation } from './utils/exerciseRotation';
 import { analyzeBodyPhotos, generateWeeklyPlan } from './services/geminiService';
 import { supabase } from './lib/supabase';
 import { 
@@ -80,9 +85,11 @@ const BottomNav = ({ activeTab, setActiveTab }: { activeTab: string, setActiveTa
   );
 };
 
-// --- Main App ---
+// --- Main App Component ---
 
-export default function App() {
+function AppContent() {
+  const toast = useToast();
+  const { theme, toggleTheme } = useTheme();
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
@@ -320,6 +327,18 @@ export default function App() {
 
   const [restTimer, setRestTimer] = useState<number | null>(null);
   const [initialRestTime, setInitialRestTime] = useState(60);
+  const [elapsedTime, setElapsedTime] = useState(0);
+
+  // Elapsed Time Logic - tracks actual workout duration
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isWorkoutActive && startTime) {
+      interval = setInterval(() => {
+        setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [isWorkoutActive, startTime]);
 
   // Rest Timer Logic
   useEffect(() => {
@@ -377,7 +396,7 @@ export default function App() {
     }
 
     const getTargetReps = () => {
-      switch(profile.level) {
+      switch(profile.fitnessLevel) {
         case 'beginner': return 12;
         case 'intermediate': return 10;
         case 'advanced': return 8;
@@ -521,16 +540,36 @@ export default function App() {
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || !profile) return;
     
+    if (e.target.files.length === 0) {
+      toast.addToast('warning', 'No Photos Selected', 'Please select at least one photo to analyze.');
+      return;
+    }
+
     setIsAnalyzing(true);
     try {
-      const files = Array.from(e.target.files);
-      const imageData = await Promise.all(files.map((file: File) => {
-        return new Promise<{ data: string, mimeType: string }>((resolve) => {
+      const files = Array.from(e.target.files as FileList);
+      
+      // Validate file sizes
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      const oversizedFiles = files.filter((f: File) => f.size > maxSize);
+      if (oversizedFiles.length > 0) {
+        toast.addToast('error', 'File Too Large', 'Please use photos smaller than 5MB each.');
+        setIsAnalyzing(false);
+        return;
+      }
+      
+      const imageData = await Promise.all((files as File[]).map((file: File) => {
+        return new Promise<{ data: string, mimeType: string }>((resolve, reject) => {
           const reader = new FileReader();
           reader.onloadend = () => {
-            const base64 = (reader.result as string).split(',')[1];
-            resolve({ data: base64, mimeType: file.type });
+            try {
+              const base64 = (reader.result as string).split(',')[1];
+              resolve({ data: base64, mimeType: file.type });
+            } catch (err) {
+              reject(err);
+            }
           };
+          reader.onerror = () => reject(reader.error);
           reader.readAsDataURL(file);
         });
       }));
@@ -545,8 +584,11 @@ export default function App() {
       setTempMode(null);
       setSelectedExternalActivities([]);
       setActiveTab('today');
-    } catch (error) {
+      toast.addToast('success', 'Analysis Complete', 'Your AI body analysis is ready! Select your training mode.');
+    } catch (error: any) {
       console.error("Analysis failed:", error);
+      const errorMessage = error?.message || 'An error occurred during analysis';
+      toast.addToast('error', 'Analysis Failed', errorMessage);
     } finally {
       setIsAnalyzing(false);
     }
@@ -573,11 +615,32 @@ export default function App() {
       });
       setShowExternalSelection(false);
       setTempMode(null);
-    } catch (error) {
+      toast.addToast('success', 'Plan Generated', 'Your personalized AI training plan is ready!');
+    } catch (error: any) {
       console.error("Plan generation failed:", error);
+      const errorMessage = error?.message || 'Failed to generate workout plan';
+      toast.addToast('error', 'Plan Generation Failed', errorMessage);
     } finally {
       setIsGeneratingPlan(false);
     }
+  };
+
+  const handleLogout = async () => {
+    if (confirm('Are you sure you want to logout? Your progress is saved to the cloud.')) {
+      try {
+        await supabase?.auth.signOut();
+        toast.addToast('success', 'Logged Out', 'You have been successfully logged out.');
+      } catch (error) {
+        console.error('Logout failed:', error);
+        toast.addToast('error', 'Logout Failed', 'Could not logout. Please try again.');
+      }
+    }
+  };
+
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   if (isAuthLoading) {
@@ -673,12 +736,21 @@ export default function App() {
           <button 
             onClick={() => setShowLegal(true)}
             className="p-2 bg-zinc-900 rounded-full border border-zinc-800"
+            title="Legal"
           >
             <Shield size={20} className="text-zinc-400" />
           </button>
           <button 
-            onClick={() => supabase?.auth.signOut()}
-            className="p-2 bg-zinc-900 rounded-full border border-zinc-800"
+            onClick={toggleTheme}
+            className="p-2 bg-zinc-900 rounded-full border border-zinc-800 hover:border-brand-500/50 hover:text-brand-400 transition-colors"
+            title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+          >
+            {theme === 'dark' ? <Sun size={20} className="text-zinc-400" /> : <Moon size={20} className="text-zinc-400" />}
+          </button>
+          <button 
+            onClick={handleLogout}
+            className="p-2 bg-zinc-900 rounded-full border border-zinc-800 hover:border-red-500/50 hover:text-red-500 transition-colors"
+            title="Logout"
           >
             <Settings size={20} className="text-zinc-400" />
           </button>
@@ -1159,7 +1231,7 @@ export default function App() {
                 </div>
                 <div>
                   <h3 className="font-bold">Active Session</h3>
-                  <p className="text-xs text-zinc-500">00:45:12</p>
+                  <p className="text-xs text-zinc-500">{formatTime(elapsedTime)}</p>
                 </div>
               </div>
               <button 
@@ -1216,6 +1288,37 @@ export default function App() {
                 )}
               </AnimatePresence>
 
+              {/* Gym/Home Mode Selector */}
+              <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl p-4 space-y-3">
+                <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Training Mode</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setProfile({ ...profile, mode: 'gym' })}
+                    className={cn(
+                      "p-3 rounded-2xl border font-bold text-sm transition-all flex items-center justify-center gap-2",
+                      profile.mode === 'gym' 
+                        ? "bg-brand-500/20 border-brand-500 text-brand-400" 
+                        : "bg-zinc-800 border-zinc-700 text-zinc-400"
+                    )}
+                  >
+                    <Dumbbell size={16} />
+                    Gym
+                  </button>
+                  <button
+                    onClick={() => setProfile({ ...profile, mode: 'home' })}
+                    className={cn(
+                      "p-3 rounded-2xl border font-bold text-sm transition-all flex items-center justify-center gap-2",
+                      profile.mode === 'home' 
+                        ? "bg-brand-500/20 border-brand-500 text-brand-400" 
+                        : "bg-zinc-800 border-zinc-700 text-zinc-400"
+                    )}
+                  >
+                    <Home size={16} />
+                    Home
+                  </button>
+                </div>
+              </div>
+
               {/* AI Insight Bubble */}
               <div className="bg-brand-500/10 border border-brand-500/20 p-4 rounded-2xl flex gap-3 items-start">
                 <div className="p-2 bg-brand-500/20 rounded-lg text-brand-500">
@@ -1229,18 +1332,21 @@ export default function App() {
                 </div>
               </div>
 
-              {activeWorkout.exercises.map((ex, exIdx) => (
+              {activeWorkout.exercises.map((ex, exIdx) => {
+                const dayNumber = new Date().getDate();
+                const exerciseVariation = getExerciseVariation(ex.id, dayNumber);
+                return (
                 <div key={ex.id} className="space-y-4">
                   <div className="flex justify-between items-end">
                     <div>
-                      <h4 className="text-xl font-bold">{ex.name}</h4>
+                      <h4 className="text-xl font-bold">{exerciseVariation}</h4>
                       <div className="flex gap-2 mt-1">
                         {ex.primaryMuscles.map(m => (
                           <span key={m} className="text-[10px] uppercase font-bold text-brand-400">{m}</span>
                         ))}
                       </div>
                     </div>
-                    <BodyMap activeMuscles={ex.primaryMuscles} secondaryMuscles={ex.secondaryMuscles} size={60} />
+                    <BodyMap activeMuscles={ex.primaryMuscles} size={60} />
                   </div>
 
                   <div className="space-y-2">
@@ -1300,7 +1406,8 @@ export default function App() {
                     ))}
                   </div>
                 </div>
-              ))}
+              );
+              })}
             </div>
           </motion.div>
         )}
@@ -1405,5 +1512,15 @@ export default function App() {
 
       <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <ToastProvider>
+        <AppContent />
+      </ToastProvider>
+    </ThemeProvider>
   );
 }
