@@ -1,0 +1,5 @@
+{
+  "name": "EvolveFit AI",
+  "description": "Level up your physique with EvolveFit AI. Get a custom AI workout plan based on your body scan, track muscle growth with GymLevels, and master every pose with our visual library.",
+  "requestFramePermissions": ["camera", "geolocation"]
+}
