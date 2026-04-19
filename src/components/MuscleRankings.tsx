@@ -8,9 +8,10 @@ interface MuscleRankingsProps {
   muscleXP: Record<string, number>;
   totalXP: number;
   level: number;
+  history?: any[];
 }
 
-export const MuscleRankings: React.FC<MuscleRankingsProps> = ({ muscleXP, totalXP, level }) => {
+export const MuscleRankings: React.FC<MuscleRankingsProps> = ({ muscleXP, totalXP, level, history = [] }) => {
   const [view, setView] = useState<'front' | 'back'>('front');
 
   const getIntensity = (xp: number) => {
@@ -74,6 +75,42 @@ export const MuscleRankings: React.FC<MuscleRankingsProps> = ({ muscleXP, totalX
             </div>
           );
         })}
+      </div>
+
+      {/* Exercise XP Breakdown */}
+      <div className="space-y-3">
+        <h3 className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-2">Exercise XP Tracker</h3>
+        {history.length === 0 ? (
+          <div className="text-center py-8 text-zinc-500 bg-zinc-900/30 rounded-2xl border border-dashed border-zinc-800">
+            <p className="text-sm">No workouts completed yet</p>
+            <p className="text-[10px] uppercase font-bold mt-1">Start a workout to earn XP</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {history.flatMap((session: any) => 
+              session.exercises.map((ex: any, idx: number) => {
+                const exerciseXP = session.xpEarned / session.exercises.length;
+                return (
+                  <div key={`${session.id}-${idx}`} className="bg-zinc-900/30 border border-zinc-800/50 rounded-xl p-3 flex items-center justify-between hover:border-brand-500/30 transition-colors">
+                    <div className="flex items-center gap-2 flex-1">
+                      <div className="w-1 h-6 rounded-full bg-brand-500" />
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-xs font-bold text-white truncate">{ex.name}</h4>
+                        <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">
+                          {new Date(session.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right ml-2">
+                      <span className="text-xs font-black text-green-400">+{Math.round(exerciseXP)}</span>
+                      <span className="text-[10px] text-zinc-500 font-bold block">XP</span>
+                    </div>
+                  </div>
+                );
+              })
+            ).reverse()}
+          </div>
+        )}
       </div>
     </div>
   );

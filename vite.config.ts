@@ -5,11 +5,10 @@ import {defineConfig, loadEnv} from 'vite';
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   return {
-    base: './',
+    base: '/',
     plugins: [react()],
     define: {
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-      'process.env.DISABLE_HMR': JSON.stringify(env.DISABLE_HMR || 'true'),
+      'process.env.DISABLE_HMR': JSON.stringify(env.DISABLE_HMR || 'false'),
     },
     resolve: {
       alias: {
