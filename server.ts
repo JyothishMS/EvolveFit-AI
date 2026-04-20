@@ -13,6 +13,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import analyzeHandler from './api/analyze';
 import generatePlanHandler from './api/generate-plan';
+import coachHandler from './api/coach';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,6 +33,7 @@ async function startServer() {
 
   app.post('/api/analyze', analyzeHandler);
   app.post('/api/generate-plan', generatePlanHandler);
+  app.post('/api/coach', coachHandler);
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {

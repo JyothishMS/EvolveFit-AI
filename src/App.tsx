@@ -179,6 +179,23 @@ function AppContent() {
       const transcript = event.results[event.results.length - 1][0].transcript.toLowerCase();
       console.log("🎤 Heard:", transcript);
 
+      // 🏥 INJURY DETECTION FROM VOICE
+      const injuryKeywords = {
+        hand: ['hand', 'arm', 'wrist', 'elbow', 'hand injury'],
+        leg: ['leg', 'knee', 'ankle', 'hip', 'leg injury'],
+        back: ['back', 'spine', 'lumbar', 'back pain'],
+        shoulder: ['shoulder', 'shoulder pain'],
+      };
+
+      for (const [injuryType, keywords] of Object.entries(injuryKeywords)) {
+        if (keywords.some(keyword => transcript.includes(keyword))) {
+          setInjuryType(injuryType as any);
+          toast.addToast('info', '🏥 Injury Detected', `I heard about your ${injuryType} injury. Your workout has been adjusted!`);
+          console.log(`✅ Voice detected ${injuryType} injury - updating workout`);
+          break;
+        }
+      }
+
       // Get current set being worked on
       if (activeWorkout) {
         const currentExIdx = activeWorkout.exercises.findIndex(e => e.sets.some(s => !s.completed));
@@ -189,28 +206,49 @@ function AppContent() {
             const currentCount = repCounters[setKey] || 0;
             const targetReps = activeWorkout.exercises[currentExIdx].sets[currentSetIdx].reps;
 
-            // 🔢 Check for number words first
-            const words = transcript.split(" ");
             let numberDetected = false;
-            
-            words.forEach((word: string) => {
-              if (wordToNumber[word]) {
-                const incrementBy = wordToNumber[word];
-                const newCount = currentCount + incrementBy;
-                setRepCounters(prev => ({ ...prev, [setKey]: newCount }));
-                numberDetected = true;
+            const words = transcript.split(" ");
 
-                // Show feedback
-                console.log(`✅ Rep counted! +${incrementBy} → ${newCount}/${targetReps}`);
+            // 🔢 SMART NUMBER COUNTING - Check for digits in speech
+            const numbers = transcript.match(/\d+/g);
+            if (numbers) {
+              const totalIncrease = numbers.reduce((sum: number, num: string) => sum + parseInt(num), 0);
+              const newCount = currentCount + totalIncrease;
+              setRepCounters(prev => ({ ...prev, [setKey]: newCount }));
+              numberDetected = true;
 
-                // Auto-complete when target reached
-                if (newCount >= targetReps) {
-                  toast.addToast('success', 'Set Complete!', `🔥 Amazing! ${targetReps} reps done!`);
-                  setCurrentRestingSet(setKey);
-                  setCurrentAIMessage("Great work! Time to recover! 💪");
-                }
+              // Show feedback
+              console.log(`✅ Rep counted! +${totalIncrease} → ${newCount}/${targetReps}`);
+
+              // Auto-complete when target reached
+              if (newCount >= targetReps) {
+                toast.addToast('success', 'Set Complete!', `🔥 Amazing! ${targetReps} reps done!`);
+                setCurrentRestingSet(setKey);
+                setCurrentAIMessage("Great work! Time to recover! 💪");
               }
-            });
+            }
+
+            // 🔢 Check for number words if no digits detected
+            if (!numberDetected) {
+              words.forEach((word: string) => {
+                if (wordToNumber[word]) {
+                  const incrementBy = wordToNumber[word];
+                  const newCount = currentCount + incrementBy;
+                  setRepCounters(prev => ({ ...prev, [setKey]: newCount }));
+                  numberDetected = true;
+
+                  // Show feedback
+                  console.log(`✅ Rep counted! +${incrementBy} → ${newCount}/${targetReps}`);
+
+                  // Auto-complete when target reached
+                  if (newCount >= targetReps) {
+                    toast.addToast('success', 'Set Complete!', `🔥 Amazing! ${targetReps} reps done!`);
+                    setCurrentRestingSet(setKey);
+                    setCurrentAIMessage("Great work! Time to recover! 💪");
+                  }
+                }
+              });
+            }
 
             // If no numbers detected, check for trigger words
             if (!numberDetected) {
@@ -944,46 +982,33 @@ function AppContent() {
     setChatMessages(newMessages);
     setChatInput('');
     
-    // Coach AI response (mock - can integrate real AI later)
-    setTimeout(() => {
-      let coachResponse = '';
-      const lowerMsg = message.toLowerCase();
-      
-      // ✅ INJURY DETECTION - Step 1: Detect injury keywords
-      const hasHandInjury = lowerMsg.includes('hand') || lowerMsg.includes('arm') || lowerMsg.includes('wrist') || lowerMsg.includes('elbow');
-      const hasLegInjury = lowerMsg.includes('leg') || lowerMsg.includes('knee') || lowerMsg.includes('ankle') || lowerMsg.includes('hip');
-      const hasBackInjury = lowerMsg.includes('back') || lowerMsg.includes('spine') || lowerMsg.includes('lumbar');
-      const hasShoulder = lowerMsg.includes('shoulder');
-      
-      // ✅ INJURY DETECTION - Step 2: Smart workout adjustments based on injury type
-      if (hasHandInjury) {
-        setInjuryType('hand'); // ← NEW: Update workout plan
-        coachResponse = "Got it 👍 Since you have a hand/arm injury, I'll avoid push-ups, planks, and upper body strain. Let's switch to leg workouts like squats, lunges, leg presses, and core exercises without hand pressure. Your legs will still get a great workout! 💪";
-      } else if (hasLegInjury) {
-        setInjuryType('leg'); // ← NEW: Update workout plan
-        coachResponse = "Understood 👍 With a leg injury, I'll avoid squats, lunges, running, and jumping. Focus on upper body workouts like push-ups, shoulder presses, dumbbell rows, and seated exercises instead. Your upper body needs attention! 💪";
-      } else if (hasBackInjury) {
-        setInjuryType('back'); // ← NEW: Update workout plan
-        coachResponse = "Got it 👍 Back injury detected. I'll avoid heavy deadlifts, barbell rows, and intense core work. Let's focus on: light cardio, leg presses, shoulder presses, and controlled stretching. Protect your spine! 🫀";
-      } else if (hasShoulder) {
-        setInjuryType('shoulder'); // ← NEW: Update workout plan
-        coachResponse = "Understood 👍 Shoulder pain noted. I'll skip overhead presses, pull-ups, and heavy chest work. Let's do: leg exercises, core work, and light arm movements. Recovery is key! 💪";
-      } else if (lowerMsg.includes('pain') || lowerMsg.includes('hurt')) {
-        coachResponse = "I hear you! 🤕 Let me adjust your workout. Which area is causing pain? Tell me more and I'll swap it for a safer alternative.";
-      } else if (lowerMsg.includes('tired') || lowerMsg.includes('no energy') || lowerMsg.includes('fatigue')) {
-        coachResponse = "No problem! 💪 I'm reducing your reps by 30% to match your energy level. You can still crush it!";
-      } else if (lowerMsg.includes('only') && (lowerMsg.includes('min') || lowerMsg.includes('minute'))) {
-        coachResponse = "Got it! Let me shorten your workout to fit your schedule. We'll keep the most important exercises!";
-      } else if (lowerMsg.includes('what') && lowerMsg.includes('do')) {
-        coachResponse = "For this exercise: Keep your form strict, control the weight, and focus on the muscle you're targeting. You've got this! 🔥";
-      } else if (lowerMsg.includes('form') || lowerMsg.includes('technique')) {
-        coachResponse = "Good question! Proper form > heavy weight. Slow down, feel the muscle working, and never compromise form for ego. Quality over quantity!";
-      } else {
-        coachResponse = "Great question! 💡 Remember to stay hydrated, focus on your breathing, and don't skip the warm-up. How else can I help?";
+    try {
+      // � Call Intent-based Coach (no API needed, fast & reliable)
+      const response = await fetch('/api/coach', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to get coach response');
       }
-      
+
+      const { response: coachResponse, detectedInjury, intent } = await response.json();
+
+      // ✅ AUTOMATICALLY UPDATE WORKOUT IF INJURY DETECTED
+      if (detectedInjury && detectedInjury !== 'none') {
+        setInjuryType(detectedInjury);
+        toast.addToast('info', '🏥 Workout Adjusted', `Your workout has been modified for your ${detectedInjury} injury.`);
+        console.log(`✅ Intent: ${intent} - Injury: ${detectedInjury} - Workout updated`);
+      }
+
       setChatMessages(prev => [...prev, { role: 'coach', text: coachResponse }]);
-    }, 500);
+    } catch (error) {
+      console.error('❌ Coach error:', error);
+      const fallbackResponse = "Tell me your goal, injury, or how you're feeling! I can help with injuries, energy levels, time limits, or fitness goals. 💪";
+      setChatMessages(prev => [...prev, { role: 'coach', text: fallbackResponse }]);
+    }
   };
 
   // 🔥 STEP 3: Filter exercises based on injury type
