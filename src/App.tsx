@@ -135,6 +135,50 @@ function AppContent() {
   const [currentRestingSet, setCurrentRestingSet] = useState<string | null>(null);
   const [injuryType, setInjuryType] = useState<'none' | 'hand' | 'leg' | 'back' | 'shoulder'>('none');
 
+  // 🎤 VOICE COMMAND HANDLER
+  const handleVoiceCommand = (transcript: string) => {
+    const command = transcript.toLowerCase();
+
+    // ⏭️ NEXT SET / SKIP COMMAND
+    if (command.includes("next set") || command.includes("next") || command.includes("skip")) {
+      if (activeWorkout && currentRestingSet) {
+        const [exIdx, setIdx] = currentRestingSet.split('-').map(Number);
+        if (exIdx !== -1 && setIdx !== -1) {
+          // Mark current set as completed
+          const updatedExercises = activeWorkout.exercises.map((ex, idx) => {
+            if (idx === exIdx) {
+              return {
+                ...ex,
+                sets: ex.sets.map((set, sIdx) => sIdx === setIdx ? { ...set, completed: true } : set)
+              };
+            }
+            return ex;
+          });
+          
+          setActiveWorkout({ ...activeWorkout, exercises: updatedExercises });
+          setCurrentRestingSet(null);
+          setRepCounters(prev => ({ ...prev, [`${exIdx}-${setIdx}`]: 0 }));
+          toast.addToast('success', '✅ Set Marked Complete', 'Moving to next set!');
+          console.log(`✅ Voice: Next set command`);
+        }
+      }
+    }
+
+    // ⏸️ PAUSE COMMAND
+    if (command.includes("pause")) {
+      setListening(false);
+      toast.addToast('info', '⏸️ Workout Paused', 'Say "resume" to continue');
+      console.log(`⏸️ Voice: Pause command`);
+    }
+
+    // ⏹️ STOP COMMAND
+    if (command.includes("stop") || command.includes("finish")) {
+      setListening(false);
+      toast.addToast('warning', '🛑 Voice Stopped', 'Mic is off. Click the mic button to resume.');
+      console.log(`🛑 Voice: Stop command`);
+    }
+  };
+
   // Global error suppression for benign environment-related issues
   useEffect(() => {
     if (!listening) return;
@@ -179,7 +223,10 @@ function AppContent() {
       const transcript = event.results[event.results.length - 1][0].transcript.toLowerCase();
       console.log("🎤 Heard:", transcript);
 
-      // 🏥 INJURY DETECTION FROM VOICE
+      // � CHECK FOR VOICE COMMANDS FIRST
+      handleVoiceCommand(transcript);
+
+      // �🏥 INJURY DETECTION FROM VOICE
       const injuryKeywords = {
         hand: ['hand', 'arm', 'wrist', 'elbow', 'hand injury'],
         leg: ['leg', 'knee', 'ankle', 'hip', 'leg injury'],
@@ -974,6 +1021,76 @@ function AppContent() {
     }
   };
 
+  // 🎯 APPLY INTENT - SYNC ACTIONS WITH RESPONSES (CRITICAL!)
+  const applyIntent = (intent: string) => {
+    if (!activeWorkout) return;
+
+    switch (intent) {
+      case "LEG_INJURY":
+      case "ARM_INJURY":
+      case "BACK_INJURY":
+      case "SHOULDER_INJURY":
+        // Injury types handled by setInjuryType above
+        console.log(`✅ Applied: ${intent}`);
+        break;
+
+      case "LOW_ENERGY":
+        // Reduce all reps by 30%
+        const lightExercises = activeWorkout.exercises.map(ex => ({
+          ...ex,
+          sets: ex.sets.map(set => ({
+            ...set,
+            reps: Math.ceil(set.reps * 0.7) // 70% of original = 30% reduction
+          }))
+        }));
+        setActiveWorkout({ ...activeWorkout, exercises: lightExercises });
+        toast.addToast('success', '💤 Intensity Reduced', 'Your reps have been reduced by 30% for low energy');
+        console.log(`✅ Applied: LOW_ENERGY - Reps reduced by 30%`);
+        break;
+
+      case "TIME_LIMIT":
+        // Keep only first 3 exercises (quickest workout)
+        const quickExercises = activeWorkout.exercises.slice(0, 3);
+        setActiveWorkout({ ...activeWorkout, exercises: quickExercises });
+        toast.addToast('success', '⏱️ Quick Workout', 'Shortened to 3 key exercises - max 15 minutes!');
+        console.log(`✅ Applied: TIME_LIMIT - Exercises shortened to 3`);
+        break;
+
+      case "WEIGHT_LOSS":
+        // Increase reps, reduce weight (lighter, higher reps)
+        const cardioFocused = activeWorkout.exercises.map(ex => ({
+          ...ex,
+          sets: ex.sets.map(set => ({
+            ...set,
+            reps: Math.ceil(set.reps * 1.3), // 30% more reps for endurance
+            weight: Math.max(0, (set.weight as number) * 0.7) // 30% lighter weight
+          }))
+        }));
+        setActiveWorkout({ ...activeWorkout, exercises: cardioFocused });
+        toast.addToast('success', '🔥 Fat-Burning Mode', 'Higher reps, lighter weight for maximum calorie burn!');
+        console.log(`✅ Applied: WEIGHT_LOSS - Reps +30%, weight -30%`);
+        break;
+
+      case "MUSCLE_GAIN":
+        // Decrease reps, increase weight (heavier, lower reps)
+        const strengthFocused = activeWorkout.exercises.map(ex => ({
+          ...ex,
+          sets: ex.sets.map(set => ({
+            ...set,
+            reps: Math.max(3, Math.ceil(set.reps * 0.8)), // 20% fewer reps
+            weight: (set.weight as number) * 1.2 // 20% heavier weight
+          }))
+        }));
+        setActiveWorkout({ ...activeWorkout, exercises: strengthFocused });
+        toast.addToast('success', '💪 Strength Mode', 'Heavier weight, lower reps for maximum muscle gain!');
+        console.log(`✅ Applied: MUSCLE_GAIN - Reps -20%, weight +20%`);
+        break;
+
+      default:
+        console.log(`ℹ️ No action needed for intent: ${intent}`);
+    }
+  };
+
   const handleChatSubmit = async (message: string) => {
     if (!message.trim()) return;
     
@@ -1002,6 +1119,9 @@ function AppContent() {
         toast.addToast('info', '🏥 Workout Adjusted', `Your workout has been modified for your ${detectedInjury} injury.`);
         console.log(`✅ Intent: ${intent} - Injury: ${detectedInjury} - Workout updated`);
       }
+
+      // 🎯 APPLY THE INTENT - SYNC ACTIONS WITH RESPONSES
+      applyIntent(intent);
 
       setChatMessages(prev => [...prev, { role: 'coach', text: coachResponse }]);
     } catch (error) {
