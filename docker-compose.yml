@@ -1,0 +1,133 @@
+version: '3.8'
+
+services:
+  # Layer 2: Redis Cache (Shared by all instances)
+  redis:
+    image: redis:7-alpine
+    container_name: evolvefit-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - evolvefit-network
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Layer 4: Load Balancer (Nginx)
+  nginx:
+    image: nginx:alpine
+    container_name: evolvefit-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - api-1
+      - api-2
+      - api-3
+    networks:
+      - evolvefit-network
+    restart: unless-stopped
+
+  # Layer 4: API Instance 1
+  api-1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: evolvefit-api-1
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - INSTANCE_ID=1
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - GOOGLE_GENAI_API_KEY=${GOOGLE_GENAI_API_KEY}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN}
+      - CLOUDFLARE_ZONE_ID=${CLOUDFLARE_ZONE_ID}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - evolvefit-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Layer 4: API Instance 2
+  api-2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: evolvefit-api-2
+    environment:
+      - NODE_ENV=production
+      - PORT=3002
+      - INSTANCE_ID=2
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - GOOGLE_GENAI_API_KEY=${GOOGLE_GENAI_API_KEY}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN}
+      - CLOUDFLARE_ZONE_ID=${CLOUDFLARE_ZONE_ID}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - evolvefit-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Layer 4: API Instance 3
+  api-3:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: evolvefit-api-3
+    environment:
+      - NODE_ENV=production
+      - PORT=3003
+      - INSTANCE_ID=3
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - GOOGLE_GENAI_API_KEY=${GOOGLE_GENAI_API_KEY}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN}
+      - CLOUDFLARE_ZONE_ID=${CLOUDFLARE_ZONE_ID}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - evolvefit-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3003/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  redis-data:
+    driver: local
+
+networks:
+  evolvefit-network:
+    driver: bridge
