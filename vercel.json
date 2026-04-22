@@ -2,13 +2,5 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "devCommand": "npm run dev",
-  "env": {
-    "OPENAI_API_KEY": "@openai_api_key",
-    "GOOGLE_GENAI_API_KEY": "@google_genai_api_key",
-    "HF_API_KEY": "@hf_api_key",
-    "SUPABASE_URL": "@supabase_url",
-    "SUPABASE_ANON_KEY": "@supabase_anon_key"
-  },
-  "framework": "vite",
-  "nodeVersion": "20.x"
+  "framework": "vite"
 }
